@@ -5568,6 +5568,9 @@ sub mysqld_start ($$) {
   # Remember options used when starting
   $mysqld->{'started_opts'}= $extra_opts;
 
+  # "Dynamic" version of MYSQLD_CMD is reevaluated with each mysqld_start
+  $ENV{'MYSQLD_LAST_CMD'}= "$exe  @$args";
+
   return;
 }
 

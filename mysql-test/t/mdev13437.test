@@ -1,10 +1,10 @@
-# The test verifies few server/engine recovery options combinations.
+# The test verifies a few server/engine recovery options combinations.
 # Specifically, MDEV-13437,13438 are concerned with no crashes
 # due to a pair of --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
 #
-# The whole test consists of 6 phases, see (labels) echoed.
+# The whole test consists of 6 phases, see (lables) echoed.
 # Initially the test commits a transaction and in the following proceeds
-# through 6 phases, see (label) echoed.
+# throughout the 6 phases.
 # Within them the server is shut  down and attempted to restart, to succeed
 # that in the end.
 # All this proves no crashes and effective uncommit of the transaction
@@ -13,13 +13,10 @@
 --source include/have_innodb.inc
 --source include/have_binlog_format_mixed.inc
 
-# An option is to not require have_debug which would reduce
-# the number of notes in the error the test is grepping from.
---source include/have_debug.inc
-
 CREATE TABLE t1 (i INT) ENGINE=InnoDB;
 FLUSH TABLES; # we need the table post crash-restart, see MDEV-8841.
-INSERT IGNORE INTO t1 VALUES (1);
+SET @@global.innodb_flush_log_at_trx_commit=1;
+INSERT INTO t1 VALUES (1);
 
 # Now take a shapshot of the last time server options.
 #
@@ -37,64 +34,59 @@ INSERT IGNORE INTO t1 VALUES (1);
 --source include/restart_mysqld.inc
 
 
+#
 # We will try to start the server again with $restart_parameters, which will end in
 # **no** actual rollback because of read-only true.
 --let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK
+--let $error_log= $MYSQLTEST_VARDIR/tmp/my_restart.err
 --echo *** (3)  Shut down, and (4) restart with conflicing recovery options:
 --echo ***                            $restart_parameters.
---exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---shutdown_server 30
---source include/wait_until_disconnected.inc
+--source include/fail_restart_mysqld.inc
 
-# prepare the to-be-failing server restart error log for grepping
---let SEARCH_FILE= $MYSQLTEST_VARDIR/tmp/my_restart.err
---error 0,1
---remove_file $SEARCH_FILE
+# Check here that the server won't complete initialization due to the
+# heuristic option.
 
---error 1
---exec $mysqld_stub_cmd $restart_parameters > $SEARCH_FILE  2>&1
-
-# The server won't complete initialization due to the heuristic option
+# Make the range parameter big to a value like below when server runs with dbug.
+#--let SEARCH_RANGE=500000
+--let SEARCH_FILE= $error_log
 --let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
 --source include/search_pattern_in_file.inc
-# and the transaction is left intact. That is
---echo *** the following search MUST report NOT FOUND into the result file!
---let SEARCH_PATTERN= \[Note\] rollback xid
---source include/search_pattern_in_file.inc
 
---remove_file $SEARCH_FILE
+# The transaction is left intact which can be proved in the dbug mode with
+# --echo *** the following search MUST report NOT FOUND into the result file!
+#--let SEARCH_PATTERN= info: rollback xid
+#--source include/search_pattern_in_file.inc
 
+--remove_file $error_log
 
+--let $no_shutdown=1
 --let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK
+--let $error_log= $MYSQLTEST_VARDIR/tmp/my_restart.err
 --echo *** (5) restart with non-conflicing recovery options: $restart_parameters
+--source include/fail_restart_mysqld.inc
 
---error 1
---exec $mysqld_stub_cmd $restart_parameters > $SEARCH_FILE  2>&1
-
-# The server won't complete initialization due to the heuristic option
+# Check that the server won't complete initialization due to the
+# heuristic option.
 --let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
 --source include/search_pattern_in_file.inc
-# but this time the transaction is rolled back
---let SEARCH_PATTERN= \[Note\] rollback xid
---source include/search_pattern_in_file.inc
 
---remove_file $SEARCH_FILE
+# Coversely, in dbug mode this time the log witnesses the transaction
+# is rolled back.
+#--let SEARCH_PATTERN= info: rollback xid
+#--source include/search_pattern_in_file.inc
 
+--remove_file $error_log
 
---echo (6) The server restarts stably now.
 
 --let $restart_parameters= --innodb-force-recovery=0
---exec echo "restart: $restart_parameters" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---enable_reconnect
---source include/wait_until_connected_again.inc
+--echo *** (6) The server restarts with $restart_parameters and stably now.
+--source include/start_mysqld.inc
 
-# Another prove of (5) to assert t1 is empty:
-if (`SELECT COUNT(*) <> 0 from t1`)
-{
-   --die Unexpected not empty table.
-}
+# Another prove of (5)
+--echo *** Table must be empty:
+SELECT * FROM t1;
 
+#
 # Cleanup
+#
 DROP TABLE t1;
-
-

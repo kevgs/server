@@ -1,14 +1,15 @@
 CREATE TABLE t1 (i INT) ENGINE=InnoDB;
 FLUSH TABLES;
-INSERT IGNORE INTO t1 VALUES (1);
+SET @@global.innodb_flush_log_at_trx_commit=1;
+INSERT INTO t1 VALUES (1);
 *** (1) Kill the server and (2) restart with --innodb-force-recovery=3.
 *** (3)  Shut down, and (4) restart with conflicing recovery options:
 ***                            --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
 FOUND /\[ERROR\] Can\'t init tc log/ in my_restart.err
-*** the following search MUST report NOT FOUND into the result file!
-NOT FOUND /\[Note\] rollback xid/ in my_restart.err
 *** (5) restart with non-conflicing recovery options: --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK
 FOUND /\[ERROR\] Can\'t init tc log/ in my_restart.err
-FOUND /\[Note\] rollback xid/ in my_restart.err
-(6) The server restarts stably now.
+*** (6) The server restarts with --innodb-force-recovery=0 and stably now.
+*** Table must be empty:
+SELECT * FROM t1;
+i
 DROP TABLE t1;

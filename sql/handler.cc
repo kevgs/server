@@ -1835,7 +1835,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
         {
 #ifndef DBUG_OFF
           char buf[XIDDATASIZE*4+6]; // see xid_to_str
-          sql_print_information("ignore xid %s", xid_to_str(buf, info->list+i));
+          DBUG_PRINT("info", ("ignore xid %s", xid_to_str(buf, info->list+i)));
 #endif
           xid_cache_insert(info->list+i, XA_PREPARED);
           info->found_foreign_xids++;
@@ -1859,7 +1859,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
           if (rc == 0)
           {
             char buf[XIDDATASIZE*4+6]; // see xid_to_str
-            sql_print_information("commit xid %s", xid_to_str(buf, info->list+i));
+            DBUG_PRINT("info", ("commit xid %s", xid_to_str(buf, info->list+i)));
           }
 #endif
         }
@@ -1873,8 +1873,8 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
           if (rc == 0)
           {
             char buf[XIDDATASIZE*4+6]; // see xid_to_str
-            sql_print_information("rollback xid %s",
-                                  xid_to_str(buf, info->list+i));
+            DBUG_PRINT("info", ("rollback xid %s",
+                                xid_to_str(buf, info->list+i)));
           }
 #endif
         }

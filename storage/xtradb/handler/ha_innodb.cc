@@ -15399,7 +15399,6 @@ innobase_commit_by_xid(
 		return(XAER_RMFAIL);
 	}
 
-
 	trx = trx_get_trx_by_xid(xid);
 
 	if (trx) {

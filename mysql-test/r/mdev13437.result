@@ -3,8 +3,8 @@ FLUSH TABLES;
 SET @@global.innodb_flush_log_at_trx_commit=1;
 INSERT INTO t1 VALUES (1);
 *** (1) Kill the server and (2) restart with --innodb-force-recovery=3.
-*** (3)  Shut down, and (4) restart with conflicing recovery options:
-***                            --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
+*** (3)  Shut down
+*** (4) restart with conflicing recovery options: --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
 FOUND /\[ERROR\] Can\'t init tc log/ in my_restart.err
 *** (5) restart with non-conflicing recovery options: --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK
 FOUND /\[ERROR\] Can\'t init tc log/ in my_restart.err

@@ -1,4 +1,4 @@
-# The test verifies a few server/engine recovery options combinations.
+# The test verifies a few server/engine recovery option combinations.
 # Specifically, MDEV-13437,13438 are concerned with no crashes
 # due to a pair of --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
 #
@@ -35,17 +35,19 @@ INSERT INTO t1 VALUES (1);
 
 
 #
-# We will try to start the server again with $restart_parameters, which will end in
-# **no** actual rollback because of read-only true.
+# Stop and try to restart the server with $restart_parameters, which will neither
+# succeed not conduct  any rollback because of read-only true.
+--echo *** (3)  Shut down
+--let $shutdown_timeout= 30
+--source include/shutdown_mysqld.inc
+
 --let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK
 --let $error_log= $MYSQLTEST_VARDIR/tmp/my_restart.err
---echo *** (3)  Shut down, and (4) restart with conflicing recovery options:
---echo ***                            $restart_parameters.
---source include/fail_restart_mysqld.inc
+--echo *** (4) restart with conflicing recovery options: $restart_parameters.
+--source include/fail_start_mysqld.inc
 
 # Check here that the server won't complete initialization due to the
 # heuristic option.
-
 # Make the range parameter big to a value like below when server runs with dbug.
 #--let SEARCH_RANGE=500000
 --let SEARCH_FILE= $error_log
@@ -59,11 +61,10 @@ INSERT INTO t1 VALUES (1);
 
 --remove_file $error_log
 
---let $no_shutdown=1
 --let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK
 --let $error_log= $MYSQLTEST_VARDIR/tmp/my_restart.err
 --echo *** (5) restart with non-conflicing recovery options: $restart_parameters
---source include/fail_restart_mysqld.inc
+--source include/fail_start_mysqld.inc
 
 # Check that the server won't complete initialization due to the
 # heuristic option.
@@ -82,7 +83,7 @@ INSERT INTO t1 VALUES (1);
 --echo *** (6) The server restarts with $restart_parameters and stably now.
 --source include/start_mysqld.inc
 
-# Another prove of (5)
+# Another prove of (5) rollback
 --echo *** Table must be empty:
 SELECT * FROM t1;
 

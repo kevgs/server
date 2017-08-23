@@ -11,15 +11,13 @@
 # which is asserted.
 #
 --source include/have_innodb.inc
+# The test logics really requires --log-bin.
 --source include/have_binlog_format_mixed.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
 
 call mtr.add_suppression("Can't init tc log");
 call mtr.add_suppression("Aborting");
-
-CREATE TABLE t1 (i INT) ENGINE=InnoDB;
-FLUSH TABLES; # we need the table post crash-restart, see MDEV-8841.
-SET @@global.innodb_flush_log_at_trx_commit=1;
-INSERT INTO t1 VALUES (1);
 
 # Now take a shapshot of the last time server options.
 #
@@ -30,12 +28,40 @@ INSERT INTO t1 VALUES (1);
 # That's why $MYSQLD_LAST_CMD that allows for the server new start
 # with more options appended to a stub set which is settled at this very point.
 --let $mysqld_stub_cmd= $MYSQLD_LAST_CMD
+--let $error_log= $MYSQLTEST_VARDIR/log/mysqld.1.err
+--let SEARCH_FILE= $error_log
+set debug_sync='RESET';
+
+CREATE TABLE t1 (i INT) ENGINE=InnoDB;
+FLUSH TABLES; # we need the table post crash-restart, see MDEV-8841.
+SET @@global.innodb_flush_log_at_trx_commit=1;
+
+--connect (con1,localhost,root,,)
+
+--connection default
+# The signal won't arrive though
+set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
+--send INSERT INTO t1 VALUES (1);
 
 --let $restart_parameters= --innodb-force-recovery=3
---echo *** (1) Kill the server and (2) restart with $restart_parameters.
+--echo *** (1) the server is killed and (2) restarted with $restart_parameters
+
+# Switch to another connection to wait for the prepared state and kill
+--connection con1
+--let $table= information_schema.processlist
+--let $where= where state = 'debug sync point: ha_commit_trans_after_prepare'
+--let $wait_condition= SELECT count(*) = 1 FROM $table $where
+--source include/wait_condition.inc
+
 --let $shutdown_timeout= 0
 --source include/restart_mysqld.inc
 
+# An attempt to return back to the connection default with
+#--disconnect con1
+#--enable_reconnect
+#--connection default
+# segfaults in mysqltest
+# TODO: anaylize and/or jira-report it
 
 #
 # Stop and try to restart the server with $restart_parameters, which will neither
@@ -44,27 +70,24 @@ INSERT INTO t1 VALUES (1);
 --let $shutdown_timeout= 30
 --source include/shutdown_mysqld.inc
 
---let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK
---let $error_log= $MYSQLTEST_VARDIR/log/mysqld.1.err
+# the --innodb-force-recovery=3 restart above must leave the following trace:
+--let SEARCH_PATTERN= was in the XA prepared state
+--source include/search_pattern_in_file++.inc
+
+--let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK --debug=d,info
 --echo *** (4) restart with conflicing recovery options: $restart_parameters.
 --source include/fail_start_mysqld.inc
 
-# Check here that the server won't complete initialization due to the
-# heuristic option.
-# Make the range parameter big to a value like below when server runs with dbug.
-#--let SEARCH_RANGE=500000
---let SEARCH_FILE= $error_log
 --let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
 --source include/search_pattern_in_file++.inc
 
-
 # The transaction is left intact which can be proved in the dbug mode with
-# --echo *** the following search MUST report NOT FOUND into the result file!
-#--let SEARCH_PATTERN= info: rollback xid
-#--source include/search_pattern_in_file.inc
+ --echo *** the following search MUST report NOT FOUND into the result file!
+--let SEARCH_PATTERN= info: rollback xid
+--source include/search_pattern_in_file++.inc
 
 
---let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK
+--let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK --debug=d,info
 --echo *** (5) restart with non-conflicing recovery options: $restart_parameters
 --source include/fail_start_mysqld.inc
 
@@ -73,11 +96,11 @@ INSERT INTO t1 VALUES (1);
 --let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
 --source include/search_pattern_in_file++.inc
 
-
 # Coversely, in dbug mode this time the log witnesses the transaction
 # is rolled back.
-#--let SEARCH_PATTERN= info: rollback xid
-#--source include/search_pattern_in_file.inc
+--echo *** the following search MUST report YES FOUND into the result file!
+--let SEARCH_PATTERN= info: rollback xid
+--source include/search_pattern_in_file++.inc
 
 
 --let $restart_parameters= --innodb-force-recovery=0

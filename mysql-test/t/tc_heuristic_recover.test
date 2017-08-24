@@ -36,9 +36,8 @@ CREATE TABLE t1 (i INT) ENGINE=InnoDB;
 FLUSH TABLES; # we need the table post crash-restart, see MDEV-8841.
 SET @@global.innodb_flush_log_at_trx_commit=1;
 
+# Run transaction in a separate "prey" connection
 --connect (con1,localhost,root,,)
-
---connection default
 # The signal won't arrive though
 set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
 --send INSERT INTO t1 VALUES (1);
@@ -46,8 +45,7 @@ set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
 --let $restart_parameters= --innodb-force-recovery=3
 --echo *** (1) the server is killed and (2) restarted with $restart_parameters
 
-# Switch to another connection to wait for the prepared state and kill
---connection con1
+--connection default
 --let $table= information_schema.processlist
 --let $where= where state = 'debug sync point: ha_commit_trans_after_prepare'
 --let $wait_condition= SELECT count(*) = 1 FROM $table $where
@@ -56,18 +54,14 @@ set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
 --let $shutdown_timeout= 0
 --source include/restart_mysqld.inc
 
-# An attempt to return back to the connection default with
-#--disconnect con1
-#--enable_reconnect
-#--connection default
-# segfaults in mysqltest
-# TODO: anaylize and/or jira-report it
-
 #
-# Stop and try to restart the server with $restart_parameters, which will neither
-# succeed not conduct  any rollback because of read-only true.
+# Stop and try to restart the server with $restart_parameters, which
+# will neither succeed not conduct any rollback because of read-only true.
+# FIXME: MDEV-12700 Allow innodb_read_only_mode startup without prior
+# slow shutdown.
 --echo *** (3)  Shut down
---let $shutdown_timeout= 30
+SET GLOBAL innodb_fast_shutdown=0;
+--let $shutdown_timeout=
 --source include/shutdown_mysqld.inc
 
 # the --innodb-force-recovery=3 restart above must leave the following trace:
@@ -96,7 +90,7 @@ set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
 --let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
 --source include/search_pattern_in_file++.inc
 
-# Coversely, in dbug mode this time the log witnesses the transaction
+# Conversely, in dbug mode this time the log witnesses the transaction
 # is rolled back.
 --echo *** the following search MUST report YES FOUND into the result file!
 --let SEARCH_PATTERN= info: rollback xid

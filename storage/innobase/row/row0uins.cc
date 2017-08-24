@@ -199,8 +199,21 @@ row_undo_ins_remove_sec_low(
 	memset(&pcur, 0, sizeof(pcur));
 
 	mtr_start(&mtr);
-	mtr.set_named_space(index->space);
-	dict_disable_redo_if_temporary(index->table, &mtr);
+
+	switch (index->space) {
+	case IBUF_SPACE_ID:
+		if (mode == BTR_MODIFY_TREE
+		    && !(index->type & (DICT_UNIQUE | DICT_SPATIAL))) {
+			ibuf_free_excess_pages();
+		}
+		break;
+	case SRV_TMP_SPACE_ID:
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+		break;
+	default:
+		mtr.set_named_space(index->space);
+		break;
+	}
 
 	if (mode == BTR_MODIFY_LEAF) {
 		mode = BTR_MODIFY_LEAF | BTR_ALREADY_S_LATCHED;

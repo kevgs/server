@@ -34,6 +34,7 @@ Created 2/27/1997 Heikki Tuuri
 #include "trx0roll.h"
 #include "btr0btr.h"
 #include "mach0data.h"
+#include "ibuf0ibuf.h"
 #include "row0undo.h"
 #include "row0vers.h"
 #include "row0log.h"
@@ -427,8 +428,21 @@ row_undo_mod_del_mark_or_remove_sec_low(
 	log_free_check();
 	//mtr_start_trx(&mtr, thr_get_trx(thr));
 	mtr_start(&mtr);
-	mtr.set_named_space(index->space);
-	dict_disable_redo_if_temporary(index->table, &mtr);
+
+	switch (index->space) {
+	case IBUF_SPACE_ID:
+		if (mode == BTR_MODIFY_TREE
+		    && !(index->type & (DICT_UNIQUE | DICT_SPATIAL))) {
+			ibuf_free_excess_pages();
+		}
+		break;
+	case SRV_TMP_SPACE_ID:
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+		break;
+	default:
+		mtr.set_named_space(index->space);
+		break;
+	}
 
 	if (mode == BTR_MODIFY_LEAF) {
 		modify_leaf = true;
@@ -634,8 +648,20 @@ try_again:
 	log_free_check();
 	//mtr_start_trx(&mtr, thr_get_trx(thr));
 	mtr_start(&mtr);
-	mtr.set_named_space(index->space);
-	dict_disable_redo_if_temporary(index->table, &mtr);
+	switch (index->space) {
+	case IBUF_SPACE_ID:
+		if (mode == BTR_MODIFY_TREE
+		    && !(index->type & (DICT_UNIQUE | DICT_SPATIAL))) {
+			ibuf_free_excess_pages();
+		}
+		break;
+	case SRV_TMP_SPACE_ID:
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+		break;
+	default:
+		mtr.set_named_space(index->space);
+		break;
+	}
 
 	if (!index->is_committed()) {
 		/* The index->online_status may change if the index is

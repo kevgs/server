@@ -34,6 +34,7 @@ Created 12/27/1996 Heikki Tuuri
 #include "dict0boot.h"
 #include "dict0crea.h"
 #include "mach0data.h"
+#include "ibuf0ibuf.h"
 #include "btr0btr.h"
 #include "btr0cur.h"
 #include "que0que.h"
@@ -2300,17 +2301,18 @@ row_upd_sec_index_entry(
 			    "before_row_upd_sec_index_entry");
 
 	mtr_start_trx(&mtr, trx);
-	mtr.set_named_space(index->space);
 
-	/* Disable REDO logging as lifetime of temp-tables is limited to
-	server or connection lifetime and so REDO information is not needed
-	on restart for recovery.
-	Disable locking as temp-tables are not shared across connection. */
-	if (dict_table_is_temporary(index->table)) {
-		flags = BTR_NO_LOCKING_FLAG;
+	switch (index->space) {
+	case SRV_TMP_SPACE_ID:
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-	} else {
+		flags = BTR_NO_LOCKING_FLAG;
+		break;
+	default:
+		mtr.set_named_space(index->space);
+		/* fall through */
+	case IBUF_SPACE_ID:
 		flags = 0;
+		break;
 	}
 
 	if (!index->is_committed()) {
